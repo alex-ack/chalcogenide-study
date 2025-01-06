@@ -4,9 +4,6 @@ from mp_api.client import MPRester
 import json
 from datetime import datetime
 import os
-from pymatgen.core.structure import Structure
-from pymatgen.analysis.local_env import CrystalNN
-from pymatgen.core.periodic_table import Element
 from config import API_KEY, CHALCOGENS, CATIONS, MAX_SAMPLES, DATA_DIR
 
 class DataCollector:
@@ -44,6 +41,14 @@ class DataCollector:
         # Ensure 'chemsys' is treated as a string
         if 'chemsys' in df.columns:
             df['chemsys'] = df['chemsys'].astype(str)
+
+        # Check if 'band_gap' column exists
+        if 'band_gap' not in df.columns:
+            df['band_gap'] = 0.0  # Fill missing column with default value
+
+        # Check if 'formation_energy_per_atom' exists
+        if 'formation_energy_per_atom' not in df.columns:
+            df['formation_energy_per_atom'] = 0.0
 
         # Visualization 1: Band Gap Distribution
         plt.figure(figsize=(8, 6))
@@ -119,7 +124,7 @@ class DataCollector:
                                 crystal_system = str(getattr(symmetry_data, 'crystal_system', None))
 
                             # Convert elements to strings for serialization
-                            elements = [str(e) for e in getattr(entry, 'elements', [])]
+                            elements = ', '.join([str(e) for e in getattr(entry, 'elements', [])])
 
                             # Collect data
                             data = {
@@ -147,6 +152,7 @@ class DataCollector:
 
             # Convert to DataFrame
             df = pd.DataFrame(compounds_data)
+
             print(f"\nProcessed {len(df)} total compounds")
 
             # Visualize and clean data
@@ -168,7 +174,7 @@ class DataCollector:
         filename = f"{DATA_DIR}/chalcogenides_{timestamp}.csv"
 
         df.to_csv(filename, index=False)
-        print(f"\n✅ Saved {len(df)} compounds to {filename}")
+        print(f"\n👌 Saved {len(df)} compounds to {filename}")
 
         print("\n📊 Quick summary:")
         print(f"Total compounds: {len(df)}")
