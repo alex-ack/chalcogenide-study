@@ -1,84 +1,91 @@
 import pandas as pd
 import matplotlib.pyplot as plt
-from mp_api.client import MPRester
-import json
-from datetime import datetime
+import seaborn as sns
 import os
-from config import API_KEY, CHALCOGENS, CATIONS, MAX_SAMPLES, DATA_DIR
+from config import DATA_DIR
 
-class DataCollector:
-    def __init__(self):
-        print("Starting up my data collector...")
-        if not os.path.exists(DATA_DIR):
-            print(f"Creating my data directory at {DATA_DIR}")
-            os.makedirs(DATA_DIR)
-        self.api_key = API_KEY
+class DataVisualizer:
+    def __init__(self, filename):
+        self.filepath = os.path.join(DATA_DIR, filename)
+        self.df = pd.read_csv(self.filepath)
 
-    def visualize_data(self, df):
-        if df is None or len(df) == 0:
-            print("\n🔮 No data to visualize!")
-            return
+    def visualize_data(self):
+        print("\n📊 Starting Exploratory Data Analysis (EDA)...")
 
-        # Histogram of Volume
+        # Distribution of Band Gap
         plt.figure(figsize=(8, 6))
-        plt.hist(df['volume'].dropna(), bins=20, edgecolor='black')
-        plt.xlabel('Volume (Å³)')
+        sns.histplot(self.df['band_gap'], bins=30, kde=True)
+        plt.xlabel('Band Gap (eV)')
         plt.ylabel('Frequency')
-        plt.title('Volume Distribution')
-        plt.savefig(f"{DATA_DIR}/volume_distribution.png")
+        plt.title('Band Gap Distribution')
+        plt.savefig(f"{DATA_DIR}/band_gap_distribution.png")
         plt.close()
 
-        # Histogram of Density
+        # Distribution of Formation Energy
         plt.figure(figsize=(8, 6))
-        plt.hist(df['density'].dropna(), bins=20, edgecolor='black')
-        plt.xlabel('Density (g/cm³)')
+        sns.histplot(self.df['formation_energy_per_atom'], bins=30, kde=True)
+        plt.xlabel('Formation Energy per Atom (eV)')
         plt.ylabel('Frequency')
-        plt.title('Density Distribution')
-        plt.savefig(f"{DATA_DIR}/density_distribution.png")
+        plt.title('Formation Energy Distribution')
+        plt.savefig(f"{DATA_DIR}/formation_energy_distribution.png")
         plt.close()
-
-        # Scatter Plot: Volume vs Density
-        plt.figure(figsize=(8, 6))
-        plt.scatter(df['volume'], df['density'], alpha=0.6)
-        plt.xlabel('Volume (Å³)')
-        plt.ylabel('Density (g/cm³)')
-        plt.title('Volume vs Density')
-        plt.savefig(f"{DATA_DIR}/volume_vs_density.png")
-        plt.close()
-
-        # Countplot for Crystal Systems
-        if 'crystal_system' in df.columns:
-            plt.figure(figsize=(8, 6))
-            df['crystal_system'].value_counts().plot(kind='bar')
-            plt.xlabel('Crystal System')
-            plt.ylabel('Count')
-            plt.title('Crystal System Distribution')
-            plt.xticks(rotation=45)
-            plt.savefig(f"{DATA_DIR}/crystal_system_distribution.png")
-            plt.close()
-
-        # Histogram of Band Gaps
-        if 'band_gap' in df.columns:
-            plt.figure(figsize=(8, 6))
-            plt.hist(df['band_gap'].dropna(), bins=20, edgecolor='black')
-            plt.xlabel('Band Gap (eV)')
-            plt.ylabel('Frequency')
-            plt.title('Band Gap Distribution')
-            plt.savefig(f"{DATA_DIR}/band_gap_distribution.png")
-            plt.close()
 
         # Scatter Plot: Band Gap vs Formation Energy
-        if 'band_gap' in df.columns and 'formation_energy_per_atom' in df.columns:
-            plt.figure(figsize=(8, 6))
-            plt.scatter(df['band_gap'], df['formation_energy_per_atom'], alpha=0.6)
-            plt.xlabel('Band Gap (eV)')
-            plt.ylabel('Formation Energy (eV/atom)')
-            plt.title('Band Gap vs Formation Energy')
-            plt.savefig(f"{DATA_DIR}/bandgap_vs_formation_energy.png")
-            plt.close()
+        plt.figure(figsize=(8, 6))
+        sns.scatterplot(x='formation_energy_per_atom', y='band_gap', data=self.df, alpha=0.6)
+        plt.xlabel('Formation Energy (eV/atom)')
+        plt.ylabel('Band Gap (eV)')
+        plt.title('Band Gap vs Formation Energy')
+        plt.savefig(f"{DATA_DIR}/formation_vs_band_gap.png")
+        plt.close()
+
+        # Boxplot for Density and Volume
+        plt.figure(figsize=(8, 6))
+        sns.boxplot(data=self.df[['density', 'volume']])
+        plt.title('Boxplot for Density and Volume')
+        plt.savefig(f"{DATA_DIR}/boxplot_density_volume.png")
+        plt.close()
+
+        # Correlation Matrix (Numeric Columns Only)
+        numeric_df = self.df.select_dtypes(include=['float64', 'int64'])
+        plt.figure(figsize=(10, 8))
+        correlation = numeric_df.corr()
+        sns.heatmap(correlation, annot=True, cmap='coolwarm', fmt='.2f', linewidths=0.5)
+        plt.title('Correlation Matrix')
+        plt.savefig(f"{DATA_DIR}/correlation_matrix.png")
+        plt.close()
+
+        # Pair Plot for Features
+        pairplot_features = ['band_gap', 'formation_energy_per_atom', 'density', 'volume']
+        sns.pairplot(self.df[pairplot_features], diag_kind='kde')
+        plt.savefig(f"{DATA_DIR}/pairplot_features.png")
+        plt.close()
+
+        # Crystal System Distribution
+        plt.figure(figsize=(8, 6))
+        sns.countplot(data=self.df, x='crystal_system', order=self.df['crystal_system'].value_counts().index)
+        plt.xlabel('Crystal System')
+        plt.ylabel('Count')
+        plt.title('Crystal System Distribution')
+        plt.xticks(rotation=45)
+        plt.savefig(f"{DATA_DIR}/crystal_system_distribution.png")
+        plt.close()
+
+        # Separate Metals and Semiconductors
+        semiconductors = self.df[self.df['band_gap'] > 0]
+        metals = self.df[self.df['band_gap'] == 0]
+
+        # Histogram for Band Gap (Semiconductors)
+        plt.figure(figsize=(8, 6))
+        sns.histplot(semiconductors['band_gap'], bins=30, kde=True)
+        plt.xlabel('Band Gap (eV)')
+        plt.ylabel('Frequency')
+        plt.title('Semiconductor Band Gap Distribution')
+        plt.savefig(f"{DATA_DIR}/semiconductor_band_gap_distribution.png")
+        plt.close()
+
+        print("\n✅ Visualizations saved!")
 
 if __name__ == "__main__":
-    collector = DataCollector()
-    # Load data from a saved CSV file instead of fetching new data
-    compounds_df = pd.read_csv("/Users/Student/Desktop/chalcogenide-study/data/chalcogenides_20250105_2111.csv")
-    collector.visualize_data(compounds_df)
+    visualizer = DataVisualizer("chalcogenides_20250106_1353.csv")
+    visualizer.visualize_data()

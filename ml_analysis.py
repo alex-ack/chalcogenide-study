@@ -1,119 +1,101 @@
 import pandas as pd
 import numpy as np
-from sklearn.model_selection import train_test_split, cross_val_score
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 import matplotlib.pyplot as plt
 import seaborn as sns
-from config import DATA_DIR
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
+from sklearn.metrics import mean_squared_error, r2_score, classification_report, confusion_matrix
+from sklearn.preprocessing import StandardScaler
 import os
+from config import DATA_DIR
 
-class MLAnalyzer:
-    def __init__(self, data_file):
-        print("📊 Loading data for ML analysis...")
-        self.df = pd.read_csv(data_file)
-        self.prepare_features()
-        
-    def prepare_features(self):
-        """Prepare features for ML"""
-        numerical_cols = ['volume', 'density', 'nsites', 'formation_energy_per_atom']
-        categorical_cols = ['crystal_system', 'metal', 'chalcogen']
-        
-        # Drop rows with missing values
-        self.df = self.df.dropna(subset=numerical_cols + ['band_gap'])
-        
-        # Create feature matrix
-        X_numeric = self.df[numerical_cols]
-        X_categorical = pd.get_dummies(self.df[categorical_cols])
-        self.X = pd.concat([X_numeric, X_categorical], axis=1)
-        self.y = self.df['band_gap']
-        
-        print(f"\nFeatures used: {', '.join(self.X.columns)}")
-        print(f"Target: band_gap")
-        print(f"\nTotal samples: {len(self.X)}")
-        
-    def analyze_predictions(self, y_true, y_pred, set_name):
-        """Analyze prediction quality"""
-        mse = mean_squared_error(y_true, y_pred)
-        mae = mean_absolute_error(y_true, y_pred)
-        r2 = r2_score(y_true, y_pred)  # Using r2_score directly
-        
-        print(f"\n{set_name} Metrics:")
-        print(f"Mean Squared Error: {mse:.3f}")
-        print(f"Mean Absolute Error: {mae:.3f}")
-        print(f"R² Score: {r2:.3f}")
-        
-        # Plot predictions vs actual
-        plt.figure(figsize=(8, 8))
-        plt.scatter(y_true, y_pred, alpha=0.5)
-        plt.plot([y_true.min(), y_true.max()], [y_true.min(), y_true.max()], 'r--', lw=2)
-        plt.xlabel('Actual Band Gap (eV)')
-        plt.ylabel('Predicted Band Gap (eV)')
-        plt.title(f'{set_name} Predictions vs Actual')
-        plt.tight_layout()
-        plt.savefig(os.path.join(DATA_DIR, f'predictions_{set_name.lower()}.png'))
-        plt.close()
-    
-    def train_model(self):
-        """Train and evaluate Random Forest model"""
-        # Split data
-        self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(
-            self.X, self.y, test_size=0.2, random_state=42
-        )
-        
-        # Scale features
+class MLModel:
+    def __init__(self, filename):
+        self.filepath = os.path.join(DATA_DIR, filename)
+        self.df = pd.read_csv(self.filepath)
         self.scaler = StandardScaler()
-        self.X_train_scaled = self.scaler.fit_transform(self.X_train)
-        self.X_test_scaled = self.scaler.transform(self.X_test)
-        
-        # Cross-validation
-        print("\n🔄 Performing 5-fold cross-validation...")
-        self.model = RandomForestRegressor(n_estimators=100, random_state=42)
-        cv_scores = cross_val_score(self.model, self.X_train_scaled, self.y_train, cv=5)
-        print(f"Cross-validation scores: {cv_scores}")
-        print(f"Average CV score: {cv_scores.mean():.3f} (+/- {cv_scores.std() * 2:.3f})")
-        
-        # Train final model
-        print("\n🤖 Training final model...")
-        self.model.fit(self.X_train_scaled, self.y_train)
-        
-        # Make predictions
-        train_pred = self.model.predict(self.X_train_scaled)
-        test_pred = self.model.predict(self.X_test_scaled)
-        
-        # Analyze predictions
-        self.analyze_predictions(self.y_train, train_pred, "Training")
-        self.analyze_predictions(self.y_test, test_pred, "Test")
-        
+
+    def preprocess_data(self):
+        print("\n🔄 Preprocessing Data...")
+
+        # Drop non-numeric columns
+        self.df = self.df.select_dtypes(include=[np.number])
+
+        # Handle missing values by filling with mean
+        self.df.fillna(self.df.mean(), inplace=True)
+
+        # Feature selection
+        self.features = ['volume', 'density', 'nsites', 'formation_energy_per_atom']
+        self.target_band_gap = 'band_gap'
+        self.target_class = 'is_semiconductor'
+
+        # Add a binary column for classification (1 if band_gap > 0)
+        self.df[self.target_class] = (self.df['band_gap'] > 0).astype(int)
+
+        # Standardize features
+        X = self.df[self.features]
+        X_scaled = self.scaler.fit_transform(X)
+        return X_scaled
+
+    def train_regression_model(self, X_scaled):
+        print("\n📈 Training Regression Model for Band Gap Prediction...")
+        y = self.df[self.target_band_gap]
+
+        # Train-test split
+        X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42)
+
+        # Model training
+        model = RandomForestRegressor(n_estimators=100, random_state=42)
+        model.fit(X_train, y_train)
+
+        # Predictions
+        y_pred = model.predict(X_test)
+
+        # Evaluation
+        mse = mean_squared_error(y_test, y_pred)
+        r2 = r2_score(y_test, y_pred)
+        print(f"MSE: {mse:.4f}")
+        print(f"R²: {r2:.4f}")
+
         # Feature importance
-        self.feature_importance = pd.DataFrame({
-            'feature': self.X.columns,
-            'importance': self.model.feature_importances_
-        }).sort_values('importance', ascending=False)
-        
-        # Plot feature importance
-        plt.figure(figsize=(12, 6))
-        top_n = min(10, len(self.feature_importance))
-        sns.barplot(data=self.feature_importance.head(top_n), 
-                   x='importance', y='feature')
-        plt.title('Top Features for Band Gap Prediction')
-        plt.tight_layout()
-        plt.savefig(os.path.join(DATA_DIR, 'feature_importance.png'))
+        importances = model.feature_importances_
+        importance_df = pd.DataFrame({'Feature': self.features, 'Importance': importances}).sort_values(by='Importance', ascending=False)
+        print("\nFeature Importances:")
+        print(importance_df)
+
+        return model
+
+    def train_classification_model(self, X_scaled):
+        print("\n📊 Training Classification Model for Metal vs Semiconductor...")
+        y = self.df[self.target_class]
+
+        # Train-test split
+        X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42)
+
+        # Model training
+        model = RandomForestClassifier(n_estimators=100, random_state=42)
+        model.fit(X_train, y_train)
+
+        # Predictions
+        y_pred = model.predict(X_test)
+
+        # Evaluation
+        print(classification_report(y_test, y_pred))
+        cm = confusion_matrix(y_test, y_pred)
+        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
+        plt.xlabel('Predicted')
+        plt.ylabel('Actual')
+        plt.title('Confusion Matrix')
+        plt.savefig(f"{DATA_DIR}/confusion_matrix.png")
         plt.close()
-        
-        return self.feature_importance
+
+        return model
 
 if __name__ == "__main__":
-    # Get the most recent data file
-    data_files = [f for f in os.listdir(DATA_DIR) if f.startswith('chalcogenides_')]
-    if not data_files:
-        raise FileNotFoundError("No data files found!")
-    latest_file = max(data_files)
-    data_path = os.path.join(DATA_DIR, latest_file)
-    
-    # Run analysis
-    analyzer = MLAnalyzer(data_path)
-    feature_importance = analyzer.train_model()
-    print("\n🔍 Top 5 most important features:")
-    print(feature_importance.head())
+    filename = "chalcogenides_latest.csv"
+    ml_model = MLModel(filename)
+    X_scaled = ml_model.preprocess_data()
+
+    # Train and evaluate models
+    reg_model = ml_model.train_regression_model(X_scaled)
+    clf_model = ml_model.train_classification_model(X_scaled)
