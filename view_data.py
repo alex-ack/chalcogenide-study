@@ -14,83 +14,6 @@ class DataCollector:
             os.makedirs(DATA_DIR)
         self.api_key = API_KEY
 
-    def get_compounds(self):
-        print("\n🔍 Looking for compounds with these elements:")
-        print(f"Chalcogens: {CHALCOGENS}")
-        print(f"Metals: {CATIONS}")
-
-        try:
-            compounds_data = []
-            with MPRester(self.api_key) as mpr:
-                for metal in CATIONS:
-                    for chalcogen in CHALCOGENS:
-                        print(f"\nLooking for {metal}-{chalcogen} compounds...")
-
-                        # Use the updated API v3 query
-                        entries = mpr.materials.search(
-                            elements=[metal, chalcogen],
-                            num_elements=2,
-                            fields=["material_id", "formula_pretty", "volume", "density", "symmetry", "nsites", "elements", "chemsys"]
-                        )
-
-                        print(f"Found {len(entries)} compounds")
-
-                        for entry in entries:
-                            # Debug available fields
-                            if len(compounds_data) == 0:
-                                print("\nDebug: Available data fields:")
-                                print(vars(entry).keys())
-
-                            # Safely access symmetry data
-                            symmetry_data = getattr(entry, 'symmetry', None)
-                            crystal_system = None
-                            if symmetry_data:
-                                crystal_system = str(getattr(symmetry_data, 'crystal_system', None))
-
-                            # Convert elements to strings for serialization
-                            elements = [str(e) for e in getattr(entry, 'elements', [])]
-
-                            # Collect data
-                            data = {
-                                'material_id': getattr(entry, 'material_id', None),
-                                'formula': getattr(entry, 'formula_pretty', None),
-                                'volume': getattr(entry, 'volume', None),
-                                'density': getattr(entry, 'density', None),
-                                'crystal_system': crystal_system,
-                                'nsites': getattr(entry, 'nsites', None),
-                                'elements': elements,
-                                'chemsys': getattr(entry, 'chemsys', None),
-                                'metal': metal,
-                                'chalcogen': chalcogen
-                            }
-                            compounds_data.append(data)
-
-                            # Debug first compound
-                            if len(compounds_data) == 1:
-                                print("\nDebug: First compound data:")
-                                print(json.dumps(data, indent=2))
-
-            if not compounds_data:
-                print("No compounds found!")
-                return None
-
-            # Convert to DataFrame
-            df = pd.DataFrame(compounds_data)
-            print(f"\nProcessed {len(df)} total compounds")
-
-            # Check columns
-            print("\nColumns in my dataset:")
-            for col in df.columns:
-                non_null = df[col].count()
-                print(f"{col}: {non_null} non-null values")
-
-            return df
-
-        except Exception as e:
-            print(f"❌ Error: {str(e)}")
-            print("API Key being used:", self.api_key[:5] + "..." if self.api_key else "None")
-            return None
-
     def visualize_data(self, df):
         if df is None or len(df) == 0:
             print("\n🔮 No data to visualize!")
@@ -134,7 +57,28 @@ class DataCollector:
             plt.savefig(f"{DATA_DIR}/crystal_system_distribution.png")
             plt.close()
 
+        # Histogram of Band Gaps
+        if 'band_gap' in df.columns:
+            plt.figure(figsize=(8, 6))
+            plt.hist(df['band_gap'].dropna(), bins=20, edgecolor='black')
+            plt.xlabel('Band Gap (eV)')
+            plt.ylabel('Frequency')
+            plt.title('Band Gap Distribution')
+            plt.savefig(f"{DATA_DIR}/band_gap_distribution.png")
+            plt.close()
+
+        # Scatter Plot: Band Gap vs Formation Energy
+        if 'band_gap' in df.columns and 'formation_energy_per_atom' in df.columns:
+            plt.figure(figsize=(8, 6))
+            plt.scatter(df['band_gap'], df['formation_energy_per_atom'], alpha=0.6)
+            plt.xlabel('Band Gap (eV)')
+            plt.ylabel('Formation Energy (eV/atom)')
+            plt.title('Band Gap vs Formation Energy')
+            plt.savefig(f"{DATA_DIR}/bandgap_vs_formation_energy.png")
+            plt.close()
+
 if __name__ == "__main__":
     collector = DataCollector()
-    compounds_df = collector.get_compounds()
+    # Load data from a saved CSV file instead of fetching new data
+    compounds_df = pd.read_csv("/Users/Student/Desktop/chalcogenide-study/data/chalcogenides_20250105_2111.csv")
     collector.visualize_data(compounds_df)

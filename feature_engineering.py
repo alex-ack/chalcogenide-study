@@ -24,9 +24,66 @@ class DataCollector:
             flat_entry = {}
             for field in fields:
                 value = getattr(result, field, None)
+                if isinstance(value, list):
+                    value = tuple(value)  # Make lists hashable
                 flat_entry[field] = value
             flat_data.append(flat_entry)
         return flat_data
+
+    def clean_and_visualize(self, df):
+        print("\n🧹 Cleaning and Visualizing Data...")
+
+        # Remove duplicates
+        df = df.drop_duplicates()
+        print(f"After removing duplicates: {len(df)} rows")
+
+        # Ensure 'elements' column is hashable by converting lists to strings
+        if 'elements' in df.columns:
+            df['elements'] = df['elements'].apply(lambda x: ', '.join(map(str, x)) if isinstance(x, list) else str(x))
+
+        # Ensure 'chemsys' is treated as a string
+        if 'chemsys' in df.columns:
+            df['chemsys'] = df['chemsys'].astype(str)
+
+        # Visualization 1: Band Gap Distribution
+        plt.figure(figsize=(8, 6))
+        plt.hist(df['band_gap'].dropna(), bins=30, edgecolor='black')
+        plt.xlabel('Band Gap (eV)')
+        plt.ylabel('Frequency')
+        plt.title('Band Gap Distribution')
+        plt.savefig(f"{DATA_DIR}/band_gap_distribution.png")
+        plt.close()
+
+        # Visualization 2: Formation Energy vs Band Gap
+        plt.figure(figsize=(8, 6))
+        plt.scatter(df['formation_energy_per_atom'].dropna(), df['band_gap'].dropna(), alpha=0.6)
+        plt.xlabel('Formation Energy (eV/atom)')
+        plt.ylabel('Band Gap (eV)')
+        plt.title('Formation Energy vs Band Gap')
+        plt.savefig(f"{DATA_DIR}/formation_vs_band_gap.png")
+        plt.close()
+
+        # Visualization 3: Crystal System Distribution
+        plt.figure(figsize=(8, 6))
+        df['crystal_system'].value_counts().plot(kind='bar')
+        plt.xlabel('Crystal System')
+        plt.ylabel('Count')
+        plt.title('Crystal System Distribution')
+        plt.xticks(rotation=45)
+        plt.savefig(f"{DATA_DIR}/crystal_system_distribution.png")
+        plt.close()
+
+        # Visualization 4: Density vs Volume
+        plt.figure(figsize=(8, 6))
+        plt.scatter(df['volume'], df['density'], alpha=0.6)
+        plt.xlabel('Volume (Å³)')
+        plt.ylabel('Density (g/cm³)')
+        plt.title('Density vs Volume')
+        plt.savefig(f"{DATA_DIR}/density_vs_volume.png")
+        plt.close()
+
+        print("\n📊 Visualizations saved!")
+        return df
 
     def get_compounds(self):
         print("\n🔍 Looking for compounds with these elements:")
@@ -44,7 +101,7 @@ class DataCollector:
                         entries = mpr.materials.search(
                             elements=[metal, chalcogen],
                             num_elements=2,
-                            fields=["material_id", "formula_pretty", "volume", "density", "symmetry", "nsites", "elements", "chemsys", "structure"]
+                            fields=["material_id", "formula_pretty", "volume", "density", "symmetry", "nsites", "elements", "chemsys"]
                         )
 
                         print(f"Found {len(entries)} compounds")
@@ -75,8 +132,7 @@ class DataCollector:
                                 'elements': elements,
                                 'chemsys': getattr(entry, 'chemsys', None),
                                 'metal': metal,
-                                'chalcogen': chalcogen,
-                                'structure': json.loads(getattr(entry, 'structure').to_json()) if getattr(entry, 'structure', None) else None
+                                'chalcogen': chalcogen
                             }
                             compounds_data.append(data)
 
@@ -93,64 +149,8 @@ class DataCollector:
             df = pd.DataFrame(compounds_data)
             print(f"\nProcessed {len(df)} total compounds")
 
-            # Query and merge band_gap and formation_energy_per_atom
-            print("\n🔍 Querying Band Gap and Formation Energy...")
-            material_ids = df['material_id'].tolist()
-            with MPRester(self.api_key) as mpr:
-                band_gap_data = mpr.materials.electronic_structure.search(
-                    material_ids=material_ids, fields=["material_id", "band_gap"]
-                )
-                formation_energy_data = mpr.materials.thermo.search(
-                    material_ids=material_ids, fields=["material_id", "formation_energy_per_atom"]
-                )
-
-            band_gap_flat = self.flatten_results(band_gap_data, ["material_id", "band_gap"])
-            formation_energy_flat = self.flatten_results(formation_energy_data, ["material_id", "formation_energy_per_atom"])
-
-            df_band_gap = pd.DataFrame(band_gap_flat)
-            df_formation_energy = pd.DataFrame(formation_energy_flat)
-            df = pd.merge(df, df_band_gap, on="material_id", how="left")
-            df = pd.merge(df, df_formation_energy, on="material_id", how="left")
-
-            # Compute additional features
-            features = []
-            for index, row in df.iterrows():
-                try:
-                    structure = Structure.from_dict(row['structure'])
-                    nn = CrystalNN()
-                    coordination_numbers = [nn.get_cn(structure, i) for i in range(len(structure))]
-                    avg_coordination = sum(coordination_numbers) / len(coordination_numbers)
-                    bond_lengths = []
-                    for i in range(len(structure)):
-                        neighbors = nn.get_nn_info(structure, i)
-                        for n in neighbors:
-                            bond_lengths.append(n['weight'])
-                    avg_bond_length = sum(bond_lengths) / len(bond_lengths)
-
-                    elements = [Element(el) for el in row['elements']]
-                    electronegativity_diff = max([e.X for e in elements]) - min([e.X for e in elements])
-                    radii_ratio = max([e.atomic_radius for e in elements]) / min([e.atomic_radius for e in elements])
-                    avg_atomic_mass = sum([e.atomic_mass for e in elements]) / len(elements)
-
-                    features.append({
-                        'material_id': row['material_id'],
-                        'avg_coordination': avg_coordination,
-                        'avg_bond_length': avg_bond_length,
-                        'electronegativity_diff': electronegativity_diff,
-                        'radii_ratio': radii_ratio,
-                        'avg_atomic_mass': avg_atomic_mass
-                    })
-                except Exception as e:
-                    print(f"Error processing {row['material_id']}: {e}")
-
-            df_features = pd.DataFrame(features)
-            df = pd.merge(df, df_features, on='material_id', how='left')
-
-            # Check columns
-            print("\nColumns in my dataset:")
-            for col in df.columns:
-                non_null = df[col].count()
-                print(f"{col}: {non_null} non-null values")
+            # Visualize and clean data
+            df = self.clean_and_visualize(df)
 
             return df
 
