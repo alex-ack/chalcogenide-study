@@ -2,3 +2,6 @@ pandas
 pymatgen
 numpy
 matplotlib
+seaborn
+mp-api
+# pip install -r requirements.txt

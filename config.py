@@ -1,5 +1,5 @@
 # My Materials Project API key
-API_KEY = "OpfIYkqeepBETO4Yu2NSNQbedB0BSqca"
+API_KEY = "wCjUmj6kIQTiXGOhmtdeKiaIaPSASC1n"
 
 # Elements I want to study
 CHALCOGENS = ['S', 'Se', 'Te']  # The chalcogen elements

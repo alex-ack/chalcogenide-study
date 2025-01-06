@@ -1,5 +1,4 @@
 import pandas as pd
-import matplotlib.pyplot as plt
 from mp_api.client import MPRester
 import json
 from datetime import datetime
@@ -91,50 +90,25 @@ class DataCollector:
             print("API Key being used:", self.api_key[:5] + "..." if self.api_key else "None")
             return None
 
-    def visualize_data(self, df):
+    def save_data(self, df):
         if df is None or len(df) == 0:
-            print("\n🔮 No data to visualize!")
+            print("❌ No data to save!")
             return
 
-        # Histogram of Volume
-        plt.figure(figsize=(8, 6))
-        plt.hist(df['volume'].dropna(), bins=20, edgecolor='black')
-        plt.xlabel('Volume (Å³)')
-        plt.ylabel('Frequency')
-        plt.title('Volume Distribution')
-        plt.savefig(f"{DATA_DIR}/volume_distribution.png")
-        plt.close()
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M')
+        filename = f"{DATA_DIR}/chalcogenides_{timestamp}.csv"
 
-        # Histogram of Density
-        plt.figure(figsize=(8, 6))
-        plt.hist(df['density'].dropna(), bins=20, edgecolor='black')
-        plt.xlabel('Density (g/cm³)')
-        plt.ylabel('Frequency')
-        plt.title('Density Distribution')
-        plt.savefig(f"{DATA_DIR}/density_distribution.png")
-        plt.close()
+        df.to_csv(filename, index=False)
+        print(f"\n✅ Saved {len(df)} compounds to {filename}")
 
-        # Scatter Plot: Volume vs Density
-        plt.figure(figsize=(8, 6))
-        plt.scatter(df['volume'], df['density'], alpha=0.6)
-        plt.xlabel('Volume (Å³)')
-        plt.ylabel('Density (g/cm³)')
-        plt.title('Volume vs Density')
-        plt.savefig(f"{DATA_DIR}/volume_vs_density.png")
-        plt.close()
-
-        # Countplot for Crystal Systems
-        if 'crystal_system' in df.columns:
-            plt.figure(figsize=(8, 6))
-            df['crystal_system'].value_counts().plot(kind='bar')
-            plt.xlabel('Crystal System')
-            plt.ylabel('Count')
-            plt.title('Crystal System Distribution')
-            plt.xticks(rotation=45)
-            plt.savefig(f"{DATA_DIR}/crystal_system_distribution.png")
-            plt.close()
+        print("\n📊 Quick summary:")
+        print(f"Total compounds: {len(df)}")
+        print("\nCompounds per metal:")
+        print(df['metal'].value_counts())
+        print("\nCompounds per chalcogen:")
+        print(df['chalcogen'].value_counts())
 
 if __name__ == "__main__":
     collector = DataCollector()
     compounds_df = collector.get_compounds()
-    collector.visualize_data(compounds_df)
+    collector.save_data(compounds_df)
