@@ -130,3 +130,5 @@ if __name__ == "__main__":
     collector = DataCollector()
     compounds_df = collector.get_compounds()
     collector.save_data(compounds_df)
+
+# new branch
