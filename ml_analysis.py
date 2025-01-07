@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, GroupShuffleSplit
 from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
 from sklearn.metrics import mean_squared_error, r2_score, classification_report, confusion_matrix
 from sklearn.preprocessing import StandardScaler
@@ -15,17 +15,20 @@ class MLModel:
         self.df = pd.read_csv(self.filepath)
         self.scaler = StandardScaler()
 
-    def preprocess_data(self):
+    def preprocess_data(self, drop_energy=True):
         print("\n🔄 Preprocessing Data...")
 
-        # Drop non-numeric columns
-        self.df = self.df.select_dtypes(include=[np.number])
+        # Drop non-numeric columns, except for 'chemsys'
+        numeric_cols = self.df.select_dtypes(include=[np.number]).columns.tolist()
+        self.df = self.df[numeric_cols]
 
         # Handle missing values by filling with mean
         self.df.fillna(self.df.mean(), inplace=True)
 
         # Feature selection
-        self.features = ['volume', 'density', 'nsites', 'formation_energy_per_atom']
+        self.features = ['volume', 'density', 'nsites']
+        if not drop_energy:
+            self.features.append('formation_energy_per_atom')
         self.target_band_gap = 'band_gap'
         self.target_class = 'is_semiconductor'
 
@@ -94,8 +97,15 @@ class MLModel:
 if __name__ == "__main__":
     filename = "chalcogenides_latest.csv"
     ml_model = MLModel(filename)
-    X_scaled = ml_model.preprocess_data()
 
-    # Train and evaluate models
-    reg_model = ml_model.train_regression_model(X_scaled)
-    clf_model = ml_model.train_classification_model(X_scaled)
+    # Test without formation energy
+    print("\n--- Model Without Formation Energy ---")
+    X_scaled_no_energy = ml_model.preprocess_data(drop_energy=True)
+    reg_model_no_energy = ml_model.train_regression_model(X_scaled_no_energy)
+    clf_model_no_energy = ml_model.train_classification_model(X_scaled_no_energy)
+
+    # Test with formation energy
+    print("\n--- Model With Formation Energy ---")
+    X_scaled_with_energy = ml_model.preprocess_data(drop_energy=False)
+    reg_model_with_energy = ml_model.train_regression_model(X_scaled_with_energy)
+    clf_model_with_energy = ml_model.train_classification_model(X_scaled_with_energy)
